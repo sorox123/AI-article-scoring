@@ -15,6 +15,7 @@ app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['SCORES_FILE'] = 'article_scores.json'
+app.config['ARTICLES_FILE'] = 'article_list.json'
 
 # AUTHENTICATION CONFIGURATION
 # Set these environment variables on your hosting platform:
@@ -54,6 +55,46 @@ def save_scores(scores_data):
     """Save scores to JSON file"""
     with open(app.config['SCORES_FILE'], 'w', encoding='utf-8') as f:
         json.dump(scores_data, f, indent=2, ensure_ascii=False)
+
+def load_articles():
+    """Load persisted article list from JSON file"""
+    if os.path.exists(app.config['ARTICLES_FILE']):
+        with open(app.config['ARTICLES_FILE'], 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return []
+
+def save_articles(articles_list):
+    """Save article list to JSON file"""
+    with open(app.config['ARTICLES_FILE'], 'w', encoding='utf-8') as f:
+        json.dump(articles_list, f, indent=2, ensure_ascii=False)
+
+def merge_articles(existing_articles, new_articles):
+    """Merge new articles with existing ones, removing duplicates based on title"""
+    # Create a dict with titles as keys for deduplication
+    articles_dict = {}
+    
+    # Add existing articles first
+    for article in existing_articles:
+        title = article.get('Title', '').strip().lower()
+        if title:
+            articles_dict[title] = article
+    
+    # Add new articles (will overwrite if duplicate title found)
+    duplicates = []
+    new_count = 0
+    for article in new_articles:
+        title = article.get('Title', '').strip().lower()
+        if title:
+            if title in articles_dict:
+                duplicates.append(article.get('Title', ''))
+            else:
+                articles_dict[title] = article
+                new_count += 1
+    
+    # Convert back to list
+    merged_list = list(articles_dict.values())
+    
+    return merged_list, new_count, duplicates
 
 def parse_txt_file(filepath):
     """Parse a .txt file with URLs (one per line or URL,Title format)"""
@@ -108,10 +149,20 @@ def index():
         return redirect(url_for('login_page'))
     return render_template('index.html')
 
+@app.route('/api/articles', methods=['GET'])
+@login_required
+def get_articles():
+    """Get all persisted articles"""
+    articles = load_articles()
+    return jsonify({
+        'articles': articles,
+        'count': len(articles)
+    })
+
 @app.route('/api/import', methods=['POST'])
 @login_required
 def import_file():
-    """Import articles from uploaded file"""
+    """Import articles from uploaded file - persists and merges with existing articles"""
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
@@ -139,14 +190,24 @@ def import_file():
         if 'Title' not in df.columns:
             df['Title'] = df['URL'].apply(lambda x: x[:50] + '...' if len(x) > 50 else x)
         
-        articles = df[['URL', 'Title']].to_dict('records')
+        new_articles = df[['URL', 'Title']].to_dict('records')
+        
+        # Load existing articles and merge
+        existing_articles = load_articles()
+        merged_articles, new_count, duplicates = merge_articles(existing_articles, new_articles)
+        
+        # Save merged list
+        save_articles(merged_articles)
         
         os.remove(filepath)
         
         return jsonify({
             'success': True,
-            'articles': articles,
-            'count': len(articles)
+            'articles': merged_articles,
+            'total_count': len(merged_articles),
+            'new_count': new_count,
+            'duplicate_count': len(duplicates),
+            'duplicates': duplicates[:10]  # Show first 10 duplicates
         })
     
     except Exception as e:

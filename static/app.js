@@ -6,6 +6,7 @@ let currentArticleUrl = null;
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
+    loadArticles();
     loadScores();
 });
 
@@ -101,6 +102,22 @@ function hideModal(modalId) {
     document.getElementById(modalId).classList.remove('show');
 }
 
+async function loadArticles() {
+    try {
+        const response = await fetch('/api/articles');
+        if (response.ok) {
+            const result = await response.json();
+            articles = result.articles;
+            if (articles.length > 0) {
+                setStatus(`${result.count} article${result.count !== 1 ? 's' : ''} in database`);
+                renderArticles();
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load articles:', error);
+    }
+}
+
 async function handleFileSelect() {
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
@@ -124,7 +141,24 @@ async function handleFileSelect() {
 
         if (response.ok) {
             articles = result.articles;
-            setStatus(`Loaded ${result.count} articles from ${file.name}`);
+            
+            // Build status message
+            let statusMsg = `Import complete: ${result.total_count} total articles`;
+            if (result.new_count > 0) {
+                statusMsg += ` (${result.new_count} new)`;
+            }
+            if (result.duplicate_count > 0) {
+                statusMsg += ` - ${result.duplicate_count} duplicates removed`;
+            }
+            
+            setStatus(statusMsg);
+            
+            // Show detailed feedback if duplicates found
+            if (result.duplicate_count > 0 && result.duplicates.length > 0) {
+                const dupList = result.duplicates.join(', ');
+                console.log('Duplicate articles removed:', dupList);
+            }
+            
             renderArticles();
             hideModal('importModal');
         } else {
