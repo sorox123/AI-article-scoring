@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Article Credibility Scoring</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎯 AI Article Credibility Scoring</h1>
+            <div class="header-actions">
+                <button id="importBtn" class="btn btn-primary">📤 Import Articles</button>
+                <button id="exportBtn" class="btn btn-secondary">💾 Export Results</button>
+                <button id="statsBtn" class="btn btn-secondary">📊 Statistics</button>
+            </div>
+        </header>
+
+        <!-- Search and Filter Bar -->
+        <div class="search-bar">
+            <div class="search-group">
+                <input type="text" id="searchInput" placeholder="🔍 Search by title or URL..." class="search-input">
+            </div>
+            <div class="filter-group">
+                <label for="filterSelect">Filter by score:</label>
+                <select id="filterSelect" class="filter-select">
+                    <option value="All">All</option>
+                    <option value="Unscored">Unscored</option>
+                    <option value="1-3">1-3 (Low)</option>
+                    <option value="4-6">4-6 (Medium)</option>
+                    <option value="7-8">7-8 (Good)</option>
+                    <option value="9-10">9-10 (High)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Articles List -->
+        <div class="articles-section">
+            <div id="articlesContainer" class="articles-container">
+                <div class="empty-state">
+                    <div class="empty-icon">📚</div>
+                    <h2>No Articles Loaded</h2>
+                    <p>Click "Import Articles" to load your spreadsheet</p>
+                    <p class="supported-formats">Supported: .csv, .xlsx, .xls, .txt</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div id="statusBar" class="status-bar">
+            Ready. Import a file to begin.
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Import Articles</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="file-upload-area" id="fileUploadArea">
+                    <div class="upload-icon">📁</div>
+                    <p>Drag & drop your file here or click to browse</p>
+                    <p class="file-types">Supported: .csv, .xlsx, .xls, .txt</p>
+                    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none">
+                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                        Choose File
+                    </button>
+                </div>
+                <div id="uploadProgress" class="upload-progress" style="display:none">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <p>Uploading and processing...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scoring Modal -->
+    <div id="scoringModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>Score Article</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body scoring-body">
+                <div class="article-info">
+                    <h3 id="scoreArticleTitle">Article Title</h3>
+                    <a id="scoreArticleUrl" href="#" target="_blank" class="article-link">Open Article →</a>
+                </div>
+
+                <div class="scoring-categories">
+                    <!-- Accuracy -->
+                    <div class="scoring-category">
+                        <h4>1. Accuracy of Truthfulness</h4>
+                        <p class="category-desc">Ability to correctly classify stories as True (10-8), Partially True (7-4), or False (3-1)</p>
+                        <div class="slider-container">
+                            <span class="score-value" id="accuracyValue">5</span>
+                            <input type="range" min="1" max="10" value="5" class="slider" id="accuracySlider">
+                            <div class="slider-labels">
+                                <span>1 (Low)</span>
+                                <span>10 (High)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Credibility -->
+                    <div class="scoring-category">
+                        <h4>2. Author and Source Credibility Assessment</h4>
+                        <p class="category-desc">Evaluation of author identity, publication reputation, and historical accuracy</p>
+                        <div class="slider-container">
+                            <span class="score-value" id="credibilityValue">5</span>
+                            <input type="range" min="1" max="10" value="5" class="slider" id="credibilitySlider">
+                            <div class="slider-labels">
+                                <span>1 (Low)</span>
+                                <span>10 (High)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Citation -->
+                    <div class="scoring-category">
+                        <h4>3. Citation and Evidence Quality</h4>
+                        <p class="category-desc">Extent of real, relevant, and verifiable references supporting claims</p>
+                        <div class="slider-container">
+                            <span class="score-value" id="citationValue">5</span>
+                            <input type="range" min="1" max="10" value="5" class="slider" id="citationSlider">
+                            <div class="slider-labels">
+                                <span>1 (Low)</span>
+                                <span>10 (High)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Reasoning -->
+                    <div class="scoring-category">
+                        <h4>4. Reasoning Transparency</h4>
+                        <p class="category-desc">Quality of logical explanation chain and coherence</p>
+                        <div class="slider-container">
+                            <span class="score-value" id="reasoningValue">5</span>
+                            <input type="range" min="1" max="10" value="5" class="slider" id="reasoningSlider">
+                            <div class="slider-labels">
+                                <span>1 (Low)</span>
+                                <span>10 (High)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Confidence -->
+                    <div class="scoring-category">
+                        <h4>5. Confidence Calibration</h4>
+                        <p class="category-desc">Alignment between stated confidence and actual correctness</p>
+                        <div class="slider-container">
+                            <span class="score-value" id="confidenceValue">5</span>
+                            <input type="range" min="1" max="10" value="5" class="slider" id="confidenceSlider">
+                            <div class="slider-labels">
+                                <span>1 (Low)</span>
+                                <span>10 (High)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="scoring-category">
+                        <h4>Additional Notes (Optional)</h4>
+                        <textarea id="notesInput" class="notes-textarea" placeholder="Add any additional observations or comments..."></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="submitScoreBtn" class="btn btn-primary">Submit Score</button>
+                    <button class="btn btn-secondary close">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Peer Scores Modal -->
+    <div id="peerScoresModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>Peer Scores History</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="article-info">
+                    <h3 id="peerArticleTitle">Article Title</h3>
+                    <a id="peerArticleUrl" href="#" target="_blank" class="article-link">Open Article →</a>
+                </div>
+
+                <div id="peerScoresContent" class="peer-scores-content">
+                    <!-- Dynamic content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="exportModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Export Results</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="export-options">
+                    <h3>Score Range Filter</h3>
+                    <div class="radio-group">
+                        <label><input type="radio" name="exportRange" value="All" checked> All scored articles</label>
+                        <label><input type="radio" name="exportRange" value="9-10"> High (9-10)</label>
+                        <label><input type="radio" name="exportRange" value="7-8"> Good (7-8)</label>
+                        <label><input type="radio" name="exportRange" value="4-6"> Medium (4-6)</label>
+                        <label><input type="radio" name="exportRange" value="1-3"> Low (1-3)</label>
+                    </div>
+
+                    <h3>Export Format</h3>
+                    <div class="radio-group">
+                        <label><input type="radio" name="exportFormat" value="txt" checked> Text Files (.txt in .zip)</label>
+                        <label><input type="radio" name="exportFormat" value="json"> JSON File (.json)</label>
+                    </div>
+
+                    <div id="txtOptions">
+                        <h3>Text Export Options</h3>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="includeDetails" checked> Include detailed scores</label>
+                            <label><input type="checkbox" id="includeNotes" checked> Include notes</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="performExportBtn" class="btn btn-primary">Export</button>
+                    <button class="btn btn-secondary close">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Modal -->
+    <div id="statsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Statistics</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="statsContent" class="stats-content">
+                    <!-- Dynamic content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# AI Article URLs for Scoring
+# Lines starting with # are comments and will be ignored
+# Format: URL or URL,Custom Title
+
+https://techcrunch.com/2024/01/15/ai-breakthrough/,AI System Achieves Human-Level Reasoning
+https://venturebeat.com/ai/new-model-announcement/,New Language Model Surpasses GPT-4
+https://www.theverge.com/ai/2024/1/10/openai-news/,OpenAI Announces Major Product Update
+https://arstechnica.com/information-technology/ai-research/
+https://www.technologyreview.com/ai-safety/,AI Safety Concerns Mount as Capabilities Increase
+
+# You can add URLs without titles and they'll be truncated automatically
+https://www.wired.com/story/artificial-intelligence-breakthrough-2024/
+https://www.scientificamerican.com/article/ai-achieves-milestone/
