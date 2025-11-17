@@ -9,13 +9,17 @@ from datetime import datetime
 from pathlib import Path
 from functools import wraps
 import io
+import re
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+# Use a consistent secret key for development, or from environment for production
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production-12345678901234567890')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['SCORES_FILE'] = 'article_scores.json'
 app.config['ARTICLES_FILE'] = 'article_list.json'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
 
 # AUTHENTICATION CONFIGURATION
 # Set these environment variables on your hosting platform:
@@ -96,8 +100,49 @@ def merge_articles(existing_articles, new_articles):
     
     return merged_list, new_count, duplicates
 
+def is_url(text):
+    """Smart URL detection using regex"""
+    if not isinstance(text, str):
+        return False
+    
+    # URL pattern - matches http://, https://, www., and common domains
+    url_pattern = r'https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(com|org|net|edu|gov|io|co|ai|app|dev)[^\s]*'
+    return bool(re.search(url_pattern, text.strip()))
+
+def extract_url_and_title(row_data):
+    """Extract URL and title from a row of data (list or dict)"""
+    url = None
+    title = None
+    
+    if isinstance(row_data, dict):
+        # Dictionary - check all values for URLs
+        values = list(row_data.values())
+    else:
+        # List or tuple
+        values = list(row_data)
+    
+    # Find first URL
+    for val in values:
+        if is_url(val):
+            url = str(val).strip()
+            # Ensure URL has protocol
+            if not url.startswith('http'):
+                url = 'https://' + url
+            break
+    
+    # Find title (first non-URL text value, or use URL)
+    for val in values:
+        if val and not is_url(val) and isinstance(val, str) and len(val.strip()) > 0:
+            title = str(val).strip()
+            break
+    
+    if not title and url:
+        title = url[:50] + '...' if len(url) > 50 else url
+    
+    return url, title
+
 def parse_txt_file(filepath):
-    """Parse a .txt file with URLs (one per line or URL,Title format)"""
+    """Parse a .txt file - automatically detects URLs"""
     articles = []
     with open(filepath, 'r', encoding='utf-8') as f:
         for line in f:
@@ -105,18 +150,81 @@ def parse_txt_file(filepath):
             if not line or line.startswith('#'):
                 continue
             
+            # Try comma-separated format first
             if ',' in line:
-                parts = line.split(',', 1)
-                url = parts[0].strip()
-                title = parts[1].strip() if len(parts) > 1 else url
+                parts = [p.strip() for p in line.split(',')]
+                url, title = extract_url_and_title(parts)
             else:
-                url = line
-                title = url[:50] + '...' if len(url) > 50 else url
+                # Single value - check if it's a URL
+                url, title = extract_url_and_title([line])
             
-            if url.startswith('http'):
+            if url:
                 articles.append({'URL': url, 'Title': title})
     
-    return pd.DataFrame(articles)
+    return pd.DataFrame(articles) if articles else pd.DataFrame(columns=['URL', 'Title'])
+
+def smart_parse_dataframe(df):
+    """Smart parsing of dataframe - automatically detects URL and Title columns"""
+    articles = []
+    
+    # Try to find columns by common names first
+    url_col = None
+    title_col = None
+    
+    # Check for common URL column names (case-insensitive)
+    url_names = ['url', 'link', 'source', 'article', 'webpage', 'site']
+    for col in df.columns:
+        if str(col).lower().strip() in url_names:
+            url_col = col
+            break
+    
+    # Check for common title column names
+    title_names = ['title', 'headline', 'name', 'article title', 'description']
+    for col in df.columns:
+        if str(col).lower().strip() in title_names:
+            title_col = col
+            break
+    
+    # If no obvious columns found, scan data to find URLs
+    if not url_col:
+        for col in df.columns:
+            # Check first few non-null values
+            sample_values = df[col].dropna().head(5)
+            if any(is_url(str(val)) for val in sample_values):
+                url_col = col
+                break
+    
+    if not url_col:
+        return None  # No URLs found
+    
+    # Process each row
+    for idx, row in df.iterrows():
+        url = str(row[url_col]).strip() if pd.notna(row[url_col]) else None
+        
+        if url and is_url(url):
+            # Ensure URL has protocol
+            if not url.startswith('http'):
+                url = 'https://' + url
+            
+            # Get title
+            if title_col and pd.notna(row[title_col]):
+                title = str(row[title_col]).strip()
+            else:
+                # Look for first non-URL text column
+                title = None
+                for col in df.columns:
+                    if col != url_col and pd.notna(row[col]):
+                        val = str(row[col]).strip()
+                        if not is_url(val) and len(val) > 0:
+                            title = val
+                            break
+                
+                if not title:
+                    title = url[:50] + '...' if len(url) > 50 else url
+            
+            articles.append({'URL': url, 'Title': title})
+    
+    return articles
 
 @app.route('/login')
 def login_page():
@@ -162,7 +270,7 @@ def get_articles():
 @app.route('/api/import', methods=['POST'])
 @login_required
 def import_file():
-    """Import articles from uploaded file - persists and merges with existing articles"""
+    """Import articles from uploaded file - automatically detects URLs"""
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
@@ -175,22 +283,23 @@ def import_file():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        if filename.endswith('.csv'):
+        # Parse file based on type
+        if filename.endswith('.txt'):
+            df = parse_txt_file(filepath)
+            new_articles = df.to_dict('records') if not df.empty else []
+        elif filename.endswith('.csv'):
             df = pd.read_csv(filepath)
+            new_articles = smart_parse_dataframe(df)
         elif filename.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(filepath)
-        elif filename.endswith('.txt'):
-            df = parse_txt_file(filepath)
+            new_articles = smart_parse_dataframe(df)
         else:
+            os.remove(filepath)
             return jsonify({'error': 'Unsupported file format. Use .csv, .xlsx, .xls, or .txt'}), 400
         
-        if 'URL' not in df.columns:
-            return jsonify({'error': 'File must contain a "URL" column'}), 400
-        
-        if 'Title' not in df.columns:
-            df['Title'] = df['URL'].apply(lambda x: x[:50] + '...' if len(x) > 50 else x)
-        
-        new_articles = df[['URL', 'Title']].to_dict('records')
+        if not new_articles:
+            os.remove(filepath)
+            return jsonify({'error': 'No URLs detected in file. Please ensure file contains valid URLs.'}), 400
         
         # Load existing articles and merge
         existing_articles = load_articles()
@@ -211,6 +320,8 @@ def import_file():
         })
     
     except Exception as e:
+        if os.path.exists(filepath):
+            os.remove(filepath)
         return jsonify({'error': f'Failed to import file: {str(e)}'}), 500
 
 @app.route('/api/scores', methods=['GET'])
