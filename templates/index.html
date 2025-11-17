@@ -222,6 +222,7 @@
                     <div class="radio-group">
                         <label><input type="radio" name="exportFormat" value="txt" checked> Text Files (.txt in .zip)</label>
                         <label><input type="radio" name="exportFormat" value="json"> JSON File (.json)</label>
+                        <label><input type="radio" name="exportFormat" value="urls"> URL List (.txt)</label>
                     </div>
 
                     <div id="txtOptions">
@@ -229,6 +230,13 @@
                         <div class="checkbox-group">
                             <label><input type="checkbox" id="includeDetails" checked> Include detailed scores</label>
                             <label><input type="checkbox" id="includeNotes" checked> Include notes</label>
+                        </div>
+                    </div>
+
+                    <div id="urlOptions" style="display: none;">
+                        <h3>URL Export Options</h3>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="onlyScored"> Only include scored articles</label>
                         </div>
                     </div>
                 </div>

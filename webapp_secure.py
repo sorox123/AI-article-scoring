@@ -463,6 +463,64 @@ def export_json():
     except Exception as e:
         return jsonify({'error': f'Export failed: {str(e)}'}), 500
 
+@app.route('/api/export/urls', methods=['POST'])
+@login_required
+def export_urls():
+    """Export plain list of URLs (one per line)"""
+    try:
+        params = request.json
+        score_range = params.get('scoreRange', 'All')
+        only_scored = params.get('onlyScored', False)
+        
+        articles_list = load_articles()
+        scores_data = load_scores()
+        categories = ['accuracy', 'credibility', 'citation', 'reasoning', 'confidence']
+        
+        urls_to_export = []
+        
+        for article in articles_list:
+            url = article['URL']
+            scores = scores_data.get(url, [])
+            
+            # Filter by scored/unscored
+            if only_scored and not scores:
+                continue
+            
+            # Filter by score range
+            if scores and score_range != "All":
+                avg = sum(s.get(cat, 0) for s in scores for cat in categories) / (len(scores) * len(categories))
+                
+                if score_range == "9-10" and not (9 <= avg <= 10):
+                    continue
+                elif score_range == "7-8" and not (7 <= avg <= 8):
+                    continue
+                elif score_range == "4-6" and not (4 <= avg <= 6):
+                    continue
+                elif score_range == "1-3" and not (1 <= avg <= 3):
+                    continue
+            elif not scores and score_range != "All":
+                continue
+            
+            urls_to_export.append(url)
+        
+        if not urls_to_export:
+            return jsonify({'error': 'No URLs match the selected criteria'}), 400
+        
+        # Create plain text file with one URL per line
+        url_buffer = io.BytesIO()
+        url_buffer.write('\n'.join(urls_to_export).encode('utf-8'))
+        url_buffer.seek(0)
+        
+        return send_file(
+            url_buffer,
+            mimetype='text/plain',
+            as_attachment=True,
+            download_name=f'article_urls_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
+        )
+    
+    except Exception as e:
+        return jsonify({'error': f'Export failed: {str(e)}'}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     

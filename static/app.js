@@ -74,6 +74,8 @@ function initializeEventListeners() {
         radio.addEventListener('change', (e) => {
             document.getElementById('txtOptions').style.display = 
                 e.target.value === 'txt' ? 'block' : 'none';
+            document.getElementById('urlOptions').style.display = 
+                e.target.value === 'urls' ? 'block' : 'none';
         });
     });
 
@@ -449,9 +451,20 @@ async function performExport() {
         params.includeDetails = document.getElementById('includeDetails').checked;
         params.includeNotes = document.getElementById('includeNotes').checked;
     }
+    
+    if (exportFormat === 'urls') {
+        params.onlyScored = document.getElementById('onlyScored').checked;
+    }
 
     try {
-        const endpoint = exportFormat === 'txt' ? '/api/export/txt' : '/api/export/json';
+        let endpoint;
+        if (exportFormat === 'txt') {
+            endpoint = '/api/export/txt';
+        } else if (exportFormat === 'json') {
+            endpoint = '/api/export/json';
+        } else {
+            endpoint = '/api/export/urls';
+        }
         
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -468,9 +481,14 @@ async function performExport() {
             a.href = url;
             
             const contentDisposition = response.headers.get('content-disposition');
-            const filename = contentDisposition 
-                ? contentDisposition.split('filename=')[1].replace(/"/g, '')
-                : `export.${exportFormat === 'txt' ? 'zip' : 'json'}`;
+            let filename;
+            if (contentDisposition) {
+                filename = contentDisposition.split('filename=')[1].replace(/"/g, '');
+            } else {
+                if (exportFormat === 'txt') filename = 'export.zip';
+                else if (exportFormat === 'json') filename = 'export.json';
+                else filename = 'urls.txt';
+            }
             
             a.download = filename;
             document.body.appendChild(a);
