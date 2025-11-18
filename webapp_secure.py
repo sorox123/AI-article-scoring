@@ -10,6 +10,8 @@ from pathlib import Path
 from functools import wraps
 import io
 import re
+from database import get_db, init_db
+from google_sheets import get_sheets_importer
 
 app = Flask(__name__)
 # Use a consistent secret key for development, or from environment for production
@@ -38,6 +40,9 @@ def get_password_hash():
 
 # Ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Initialize database
+db = init_db()
 
 def login_required(f):
     """Decorator to require authentication"""
@@ -195,7 +200,7 @@ def smart_parse_dataframe(df):
                 break
     
     if not url_col:
-        return None  # No URLs found
+        return []  # No URLs found
     
     # Process each row
     for idx, row in df.iterrows():
@@ -261,7 +266,7 @@ def index():
 @login_required
 def get_articles():
     """Get all persisted articles"""
-    articles = load_articles()
+    articles = db.get_all_articles()
     return jsonify({
         'articles': articles,
         'count': len(articles)
@@ -301,12 +306,8 @@ def import_file():
             os.remove(filepath)
             return jsonify({'error': 'No URLs detected in file. Please ensure file contains valid URLs.'}), 400
         
-        # Load existing articles and merge
-        existing_articles = load_articles()
-        merged_articles, new_count, duplicates = merge_articles(existing_articles, new_articles)
-        
-        # Save merged list
-        save_articles(merged_articles)
+        # Add articles to database (handles deduplication)
+        merged_articles, new_count, duplicates = db.add_articles(new_articles)
         
         os.remove(filepath)
         
@@ -324,19 +325,74 @@ def import_file():
             os.remove(filepath)
         return jsonify({'error': f'Failed to import file: {str(e)}'}), 500
 
+"""
+Add this endpoint to webapp_secure.py after the /api/import endpoint
+Insert around line 328 (after the file import endpoint)
+"""
+
+@app.route('/api/import/google-sheet', methods=['POST'])
+@login_required
+def import_google_sheet():
+    """Import articles from a Google Sheets URL"""
+    try:
+        data = request.json
+        sheet_url = data.get('url', '').strip()
+        sheet_name = data.get('sheetName', None)  # Optional worksheet name
+        
+        if not sheet_url:
+            return jsonify({'error': 'No Google Sheets URL provided'}), 400
+        
+        # Validate it looks like a Google Sheets URL
+        if 'docs.google.com/spreadsheets' not in sheet_url and '/d/' not in sheet_url:
+            return jsonify({'error': 'Invalid Google Sheets URL. Please provide a valid sheets.google.com link'}), 400
+        
+        # Get Google Sheets importer
+        sheets_importer = get_sheets_importer()
+        
+        # Import the sheet
+        df = sheets_importer.import_sheet(sheet_url, sheet_name)
+        
+        if df.empty:
+            return jsonify({'error': 'Google Sheet is empty or could not be read'}), 400
+        
+        # Use smart parsing to detect URLs
+        from webapp_secure import smart_parse_dataframe  # Import the function
+        new_articles = smart_parse_dataframe(df)
+        
+        if not new_articles:
+            return jsonify({'error': 'No URLs detected in Google Sheet. Make sure the sheet contains article URLs.'}), 400
+        
+        # Add articles to database (handles deduplication)
+        merged_articles, new_count, duplicates = db.add_articles(new_articles)
+        
+        return jsonify({
+            'success': True,
+            'articles': merged_articles,
+            'total_count': len(merged_articles),
+            'new_count': new_count,
+            'duplicate_count': len(duplicates),
+            'duplicates': duplicates[:10]  # Show first 10 duplicates
+        })
+    
+    except ValueError as e:
+        # Specific error from Google Sheets importer
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'Failed to import Google Sheet: {str(e)}'}), 500
+
+
 @app.route('/api/scores', methods=['GET'])
 @login_required
 def get_scores():
     """Get all scores"""
-    scores_data = load_scores()
+    scores_data = db.get_all_scores()
     return jsonify(scores_data)
 
 @app.route('/api/scores/<path:url>', methods=['GET'])
 @login_required
 def get_article_scores(url):
     """Get scores for a specific article"""
-    scores_data = load_scores()
-    article_scores = scores_data.get(url, [])
+    article_scores = db.get_scores_for_article(url)
     
     if article_scores:
         categories = ['accuracy', 'credibility', 'citation', 'reasoning', 'confidence']
@@ -380,12 +436,8 @@ def add_score(url):
         
         score_data['timestamp'] = datetime.now().isoformat()
         
-        scores_data = load_scores()
-        if url not in scores_data:
-            scores_data[url] = []
-        
-        scores_data[url].append(score_data)
-        save_scores(scores_data)
+        # Save score to database
+        db.add_score(url, score_data)
         
         return jsonify({
             'success': True,
@@ -399,15 +451,7 @@ def add_score(url):
 @login_required
 def get_statistics():
     """Get overall statistics for all articles"""
-    scores_data = load_scores()
-    
-    stats = {
-        'total_articles': len(scores_data),
-        'total_scores': sum(len(scores) for scores in scores_data.values()),
-        'articles_with_scores': len([url for url, scores in scores_data.items() if scores]),
-        'articles_without_scores': len([url for url, scores in scores_data.items() if not scores])
-    }
-    
+    stats = db.get_statistics()
     return jsonify(stats)
 
 @app.route('/api/export/txt', methods=['POST'])
@@ -420,7 +464,7 @@ def export_txt():
         include_details = params.get('includeDetails', True)
         include_notes = params.get('includeNotes', True)
         
-        scores_data = load_scores()
+        scores_data = db.get_all_scores()
         categories = ['accuracy', 'credibility', 'citation', 'reasoning', 'confidence']
         
         from io import BytesIO
@@ -517,7 +561,7 @@ def export_json():
         params = request.json
         score_range = params.get('scoreRange', 'All')
         
-        scores_data = load_scores()
+        scores_data = db.get_all_scores()
         categories = ['accuracy', 'credibility', 'citation', 'reasoning', 'confidence']
         
         export_data = {
@@ -583,8 +627,8 @@ def export_urls():
         score_range = params.get('scoreRange', 'All')
         only_scored = params.get('onlyScored', False)
         
-        articles_list = load_articles()
-        scores_data = load_scores()
+        articles_list = db.get_all_articles()
+        scores_data = db.get_all_scores()
         categories = ['accuracy', 'credibility', 'citation', 'reasoning', 'confidence']
         
         urls_to_export = []
@@ -653,3 +697,6 @@ if __name__ == '__main__':
     print("="*80 + "\n")
     
     app.run(host='0.0.0.0', port=port, debug=False)
+
+
+

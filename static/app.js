@@ -94,6 +94,25 @@ function initializeEventListeners() {
             }
         });
     });
+
+    // Initialize import tabs
+    initializeTabs();
+    
+    // Google Sheets import button
+    const importSheetsBtn = document.getElementById('importSheetsBtn');
+    if (importSheetsBtn) {
+        importSheetsBtn.addEventListener('click', handleGoogleSheetsImport);
+    }
+    
+    // Allow Enter key in Google Sheets URL field
+    const sheetsUrlInput = document.getElementById('sheetsUrl');
+    if (sheetsUrlInput) {
+        sheetsUrlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleGoogleSheetsImport();
+            }
+        });
+    }
 }
 
 function showModal(modalId) {
@@ -440,6 +459,7 @@ async function submitScore() {
 }
 
 async function performExport() {
+    console.log('Export function called');
     const scoreRange = document.querySelector('input[name="exportRange"]:checked').value;
     const exportFormat = document.querySelector('input[name="exportFormat"]:checked').value;
     
@@ -453,7 +473,10 @@ async function performExport() {
     }
     
     if (exportFormat === 'urls') {
-        params.onlyScored = document.getElementById('onlyScored').checked;
+        const onlyScoredEl = document.getElementById('onlyScored');
+        const includeStatsEl = document.getElementById('includeStats');
+        params.onlyScored = onlyScoredEl ? onlyScoredEl.checked : false;
+        params.includeStats = includeStatsEl ? includeStatsEl.checked : false;
     }
 
     try {
@@ -466,6 +489,7 @@ async function performExport() {
             endpoint = '/api/export/urls';
         }
         
+        console.log('Fetching endpoint:', endpoint, 'with params:', params);
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
@@ -498,7 +522,8 @@ async function performExport() {
             
             setStatus('Export completed successfully!');
             hideModal('exportModal');
-        } else {
+        console.error('Export response not OK:', response.status, response.statusText);
+            } else {
             const error = await response.json();
             alert(`Export failed: ${error.error}`);
         }
@@ -545,8 +570,111 @@ function setStatus(message) {
     document.getElementById('statusBar').textContent = message;
 }
 
+// ===== Tab Switching =====
+function initializeTabs() {
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const fileTab = document.getElementById('fileTab');
+    const sheetsTab = document.getElementById('sheetsTab');
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const tab = button.getAttribute('data-tab');
+            
+            // Update button states
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            
+            // Show/hide tab content
+            if (tab === 'file') {
+                fileTab.classList.add('active');
+                fileTab.style.display = 'block';
+                sheetsTab.classList.remove('active');
+                sheetsTab.style.display = 'none';
+            } else if (tab === 'sheets') {
+                sheetsTab.classList.add('active');
+                sheetsTab.style.display = 'block';
+                fileTab.classList.remove('active');
+                fileTab.style.display = 'none';
+            }
+        });
+    });
+}
+
+// ===== Google Sheets Import =====
+async function handleGoogleSheetsImport() {
+    const sheetsUrl = document.getElementById('sheetsUrl').value.trim();
+    const sheetName = document.getElementById('sheetName').value.trim();
+
+    if (!sheetsUrl) {
+        showStatus('Please enter a Google Sheets URL', 'error');
+        return;
+    }
+
+    // Validate URL format
+    if (!sheetsUrl.includes('docs.google.com/spreadsheets')) {
+        showStatus('Invalid Google Sheets URL. Please use a valid Google Sheets link.', 'error');
+        return;
+    }
+
+    // Hide input area and show progress
+    document.getElementById('sheetsTab').style.display = 'none';
+    document.getElementById('uploadProgress').style.display = 'block';
+
+    try {
+        const requestBody = { url: sheetsUrl };
+        if (sheetName) {
+            requestBody.sheetName = sheetName;
+        }
+
+        const response = await fetch('/api/import/google-sheet', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            articles = result.articles;
+
+            // Build status message
+            let statusMsg = `Import complete: ${result.total_count} total articles`;
+            if (result.new_count > 0) {
+                statusMsg += `, ${result.new_count} new`;
+            }
+            if (result.duplicate_count > 0) {
+                statusMsg += `, ${result.duplicate_count} duplicates removed`;
+            }
+
+            showStatus(statusMsg, 'success');
+            renderArticles();
+
+            // Close modal and reset
+            document.getElementById('importModal').style.display = 'none';
+            document.getElementById('sheetsUrl').value = '';
+            document.getElementById('sheetName').value = '';
+        } else {
+            showStatus(`Import failed: ${result.error || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        console.error('Import error:', error);
+        showStatus('Error importing from Google Sheets. Please try again.', 'error');
+    } finally {
+        // Reset UI
+        document.getElementById('uploadProgress').style.display = 'none';
+        document.getElementById('sheetsTab').style.display = 'block';
+    }
+}
+
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
+
+
+
+

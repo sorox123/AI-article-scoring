@@ -62,15 +62,45 @@
                 <span class="close">&times;</span>
             </div>
             <div class="modal-body">
-                <div class="file-upload-area" id="fileUploadArea">
-                    <div class="upload-icon">📁</div>
-                    <p>Drag & drop your file here or click to browse</p>
-                    <p class="file-types">Supported: .csv, .xlsx, .xls, .txt</p>
-                    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none">
-                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
-                        Choose File
-                    </button>
+                <!-- Import Tabs -->
+                <div class="import-tabs">
+                    <button class="tab-button active" data-tab="file">📁 File Upload</button>
+                    <button class="tab-button" data-tab="sheets">📊 Google Sheets</button>
                 </div>
+
+                <!-- File Upload Tab -->
+                <div id="fileTab" class="tab-content active">
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <div class="upload-icon">📁</div>
+                        <p>Drag & drop your file here or click to browse</p>
+                        <p class="file-types">Supported: .csv, .xlsx, .xls, .txt</p>
+                        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none">
+                        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                            Choose File
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Google Sheets Tab -->
+                <div id="sheetsTab" class="tab-content" style="display:none">
+                    <div class="sheets-input-area">
+                        <div class="form-group">
+                            <label for="sheetsUrl">Google Sheets URL</label>
+                            <input type="text" id="sheetsUrl" placeholder="https://docs.google.com/spreadsheets/d/..." class="input-field">
+                            <p class="help-text">Enter the URL of a Google Sheet. The sheet must be shared publicly ("Anyone with the link can view").</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="sheetName">Worksheet Name (optional)</label>
+                            <input type="text" id="sheetName" placeholder="e.g., Sheet1" class="input-field">
+                            <p class="help-text">Leave empty to use the first worksheet.</p>
+                        </div>
+                        <button id="importSheetsBtn" class="btn btn-primary">
+                            Import from Google Sheets
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Progress Indicator (shared) -->
                 <div id="uploadProgress" class="upload-progress" style="display:none">
                     <div class="progress-bar">
                         <div class="progress-fill"></div>
@@ -80,6 +110,7 @@
             </div>
         </div>
     </div>
+
 
     <!-- Scoring Modal -->
     <div id="scoringModal" class="modal">
@@ -237,6 +268,7 @@
                         <h3>URL Export Options</h3>
                         <div class="checkbox-group">
                             <label><input type="checkbox" id="onlyScored"> Only include scored articles</label>
+                            <label><input type="checkbox" id="includeStats"> Include score statistics</label>
                         </div>
                     </div>
                 </div>
@@ -267,3 +299,5 @@
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
+
+

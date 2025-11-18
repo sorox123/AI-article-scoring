@@ -82,6 +82,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 - **[SQUARESPACE_HOSTING.md](SQUARESPACE_HOSTING.md)** - Integration with Squarespace
 - **[WEBAPP_README.md](WEBAPP_README.md)** - Full feature documentation
 - **[WEBAPP_QUICK_START.md](WEBAPP_QUICK_START.md)** - Get started in 3 steps
+- **[GOOGLE_SHEETS_SETUP.md](GOOGLE_SHEETS_SETUP.md)** - Import articles from Google Sheets
 
 ## 🔒 Security
 
@@ -96,7 +97,9 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
 ### Import Articles
 
-Upload a file with article URLs:
+Upload a file with article URLs or import directly from Google Sheets:
+
+**Google Sheets:** Share your sheet publicly and paste the URL in the app. See [GOOGLE_SHEETS_SETUP.md](GOOGLE_SHEETS_SETUP.md) for details.
 
 **CSV Format:**
 ```csv
@@ -222,3 +225,6 @@ If you find this useful, please star the repository!
 - ⚡ [Quick Start](WEBAPP_QUICK_START.md)
 
 **Ready to deploy?** Follow the [deployment guide](DEPLOYMENT.md)!
+
+
+
